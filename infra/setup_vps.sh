@@ -393,9 +393,9 @@ create_env_file() {
     printf 'FRONTEND_HTTP_PORT=%s\n' "${FRONTEND_HTTP_PORT}"
     printf 'BACKEND_HTTP_PORT=%s\n' "${BACKEND_HTTP_PORT}"
     printf 'SANDBOX_ORCHESTRATOR_HTTP_PORT=%s\n' "${SANDBOX_ORCHESTRATOR_HTTP_PORT}"
-    printf 'BACKEND_IMAGE=%s\n' "${BACKEND_IMAGE:-ghcr.io/paulofor/ai-hub-3-backend:latest}"
-    printf 'FRONTEND_IMAGE=%s\n' "${FRONTEND_IMAGE:-ghcr.io/paulofor/ai-hub-3-frontend:latest}"
-    printf 'SANDBOX_ORCHESTRATOR_IMAGE=%s\n' "${SANDBOX_ORCHESTRATOR_IMAGE:-ghcr.io/paulofor/ai-hub-3-sandbox:latest}"
+    printf 'BACKEND_IMAGE=%s\n' "${BACKEND_IMAGE:-ghcr.io/paulofor/ai-hub-5-backend:latest}"
+    printf 'FRONTEND_IMAGE=%s\n' "${FRONTEND_IMAGE:-ghcr.io/paulofor/ai-hub-5-frontend:latest}"
+    printf 'SANDBOX_ORCHESTRATOR_IMAGE=%s\n' "${SANDBOX_ORCHESTRATOR_IMAGE:-ghcr.io/paulofor/ai-hub-5-sandbox:latest}"
   } > "${env_file}"
 
   chmod 600 "${env_file}"
