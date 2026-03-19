@@ -70,30 +70,30 @@ jobs:
           context: apps/backend
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/ai-hub-3-backend:latest
-            ghcr.io/${{ github.repository_owner }}/ai-hub-3-backend:${{ github.sha }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-hub-3-backend:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-hub-3-backend:buildcache,mode=max
+            ghcr.io/${{ github.repository_owner }}/ai-hub-5-backend:latest
+            ghcr.io/${{ github.repository_owner }}/ai-hub-5-backend:${{ github.sha }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-hub-5-backend:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-hub-5-backend:buildcache,mode=max
       - name: Build and push frontend image
         uses: docker/build-push-action@v5
         with:
           context: apps/frontend
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/ai-hub-3-frontend:latest
-            ghcr.io/${{ github.repository_owner }}/ai-hub-3-frontend:${{ github.sha }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-hub-3-frontend:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-hub-3-frontend:buildcache,mode=max
+            ghcr.io/${{ github.repository_owner }}/ai-hub-5-frontend:latest
+            ghcr.io/${{ github.repository_owner }}/ai-hub-5-frontend:${{ github.sha }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-hub-5-frontend:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-hub-5-frontend:buildcache,mode=max
       - name: Build and push sandbox orchestrator image
         uses: docker/build-push-action@v5
         with:
           context: apps/sandbox-orchestrator
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/ai-hub-3-sandbox:latest
-            ghcr.io/${{ github.repository_owner }}/ai-hub-3-sandbox:${{ github.sha }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-hub-3-sandbox:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-hub-3-sandbox:buildcache,mode=max
+            ghcr.io/${{ github.repository_owner }}/ai-hub-5-sandbox:latest
+            ghcr.io/${{ github.repository_owner }}/ai-hub-5-sandbox:${{ github.sha }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-hub-5-sandbox:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-hub-5-sandbox:buildcache,mode=max
 
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -144,7 +144,7 @@ jobs:
           ssh ${SSH_COMMON_ARGS} "${DEPLOY_USER}@${DEPLOY_HOST}" "docker network inspect public-net >/dev/null 2>&1 || docker network create public-net"
       - name: Publish services
         run: |
-          REMOTE_IMAGES_ENV="BACKEND_IMAGE=ghcr.io/${GHCR_USERNAME}/ai-hub-3-backend:latest FRONTEND_IMAGE=ghcr.io/${GHCR_USERNAME}/ai-hub-3-frontend:latest SANDBOX_ORCHESTRATOR_IMAGE=ghcr.io/${GHCR_USERNAME}/ai-hub-3-sandbox:latest"
+          REMOTE_IMAGES_ENV="BACKEND_IMAGE=ghcr.io/${GHCR_USERNAME}/ai-hub-5-backend:latest FRONTEND_IMAGE=ghcr.io/${GHCR_USERNAME}/ai-hub-5-frontend:latest SANDBOX_ORCHESTRATOR_IMAGE=ghcr.io/${GHCR_USERNAME}/ai-hub-5-sandbox:latest"
           ssh ${SSH_COMMON_ARGS} "${DEPLOY_USER}@${DEPLOY_HOST}" "set -euo pipefail && cd ${REMOTE_PATH} && export ${REMOTE_IMAGES_ENV} && docker compose pull && docker compose up -d"
       - name: Clean up GHCR images for this build
         env:
@@ -204,6 +204,6 @@ jobs:
             done
           }
 
-          delete_tag "ai-hub-3-backend" "${GHCR_SHA}"
-          delete_tag "ai-hub-3-frontend" "${GHCR_SHA}"
-          delete_tag "ai-hub-3-sandbox" "${GHCR_SHA}"
+          delete_tag "ai-hub-5-backend" "${GHCR_SHA}"
+          delete_tag "ai-hub-5-frontend" "${GHCR_SHA}"
+          delete_tag "ai-hub-5-sandbox" "${GHCR_SHA}"
