@@ -29,7 +29,7 @@ import java.util.Objects;
 @Table(name = "codex_requests")
 public class CodexRequest {
 
-    public static final String HUB_VERSION = "aihub-3";
+    public static final String HUB_VERSION = "aihub-5";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
