@@ -145,7 +145,7 @@ jobs:
       - name: Publish services
         run: |
           REMOTE_IMAGES_ENV="BACKEND_IMAGE=ghcr.io/${GHCR_USERNAME}/ai-hub-5-backend:latest FRONTEND_IMAGE=ghcr.io/${GHCR_USERNAME}/ai-hub-5-frontend:latest SANDBOX_ORCHESTRATOR_IMAGE=ghcr.io/${GHCR_USERNAME}/ai-hub-5-sandbox:latest"
-          ssh ${SSH_COMMON_ARGS} "${DEPLOY_USER}@${DEPLOY_HOST}" "set -euo pipefail && cd ${REMOTE_PATH} && export ${REMOTE_IMAGES_ENV} && docker compose pull && docker compose up -d"
+          ssh ${SSH_COMMON_ARGS} "${DEPLOY_USER}@${DEPLOY_HOST}" "set -euo pipefail && cd ${REMOTE_PATH} && [ -f .env ] || touch .env && export ${REMOTE_IMAGES_ENV} && docker compose pull && docker compose up -d"
       - name: Clean up GHCR images for this build
         env:
           GHCR_OWNER: ${{ github.repository_owner }}
