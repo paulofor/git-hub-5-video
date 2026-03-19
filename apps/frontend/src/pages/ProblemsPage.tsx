@@ -336,7 +336,7 @@ export default function ProblemsPage() {
                 <button
                   type="button"
                   onClick={addEmptyUpdate}
-                  className="rounded-md border border-emerald-600 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500 dark:text-emerald-300 dark:hover:bg-emerald-900/30"
+                  className="rounded-md border border-blue-600 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-300 dark:hover:bg-blue-900/30"
                 >
                   Adicionar atualização
                 </button>
@@ -383,13 +383,13 @@ export default function ProblemsPage() {
             </div>
 
             {formError && <p className="text-sm text-red-500">{formError}</p>}
-            {formSuccess && <p className="text-sm text-emerald-600">{formSuccess}</p>}
+            {formSuccess && <p className="text-sm text-blue-600">{formSuccess}</p>}
 
             <div className="flex items-center gap-3">
               <button
                 type="submit"
                 disabled={saving}
-                className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
               >
                 {editingProblem ? 'Atualizar problema' : 'Cadastrar problema'}
               </button>
@@ -433,7 +433,7 @@ export default function ProblemsPage() {
                     <button
                       type="button"
                       onClick={() => handleEdit(problem)}
-                      className="text-sm font-medium text-emerald-600 hover:underline dark:text-emerald-400"
+                      className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
                     >
                       Editar
                     </button>
@@ -478,7 +478,7 @@ export default function ProblemsPage() {
                 )}
 
                 {problem.finalizationDescription && (
-                  <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50/60 p-3 text-sm text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-200">
+                  <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/60 p-3 text-sm text-blue-900 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-200">
                     <p className="font-semibold">Resumo da finalização</p>
                     <p className="mt-1 text-xs leading-relaxed">{problem.finalizationDescription}</p>
                   </div>

@@ -174,7 +174,7 @@ export default function CodexModelsPage() {
             <div className="px-6 pt-4 text-sm text-red-500">{error}</div>
           )}
           {successMessage && (
-            <div className="px-6 pt-4 text-sm text-emerald-600">{successMessage}</div>
+            <div className="px-6 pt-4 text-sm text-blue-600">{successMessage}</div>
           )}
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
@@ -217,7 +217,7 @@ export default function CodexModelsPage() {
                         <button
                           type="button"
                           onClick={() => handleEdit(model)}
-                          className="rounded-md border border-emerald-500 px-3 py-1 text-xs font-semibold text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/40"
+                          className="rounded-md border border-blue-500 px-3 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/40"
                         >
                           Editar
                         </button>
@@ -331,7 +331,7 @@ export default function CodexModelsPage() {
               <button
                 type="submit"
                 disabled={saving}
-                className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {saving ? 'Salvando...' : editingId ? 'Atualizar modelo' : 'Cadastrar modelo'}
               </button>

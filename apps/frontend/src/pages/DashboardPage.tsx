@@ -22,22 +22,22 @@ export default function DashboardPage() {
       <h2 className="text-2xl font-semibold">Visão geral</h2>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <DashboardCard title="Blueprints" description="Gerencie templates para stacks completas">
-          <Link to="/blueprints" className="text-sm font-semibold text-emerald-600">
+          <Link to="/blueprints" className="text-sm font-semibold text-blue-600">
             Ver blueprints →
           </Link>
         </DashboardCard>
         <DashboardCard title="Prompts" description="Acompanhe análises de falhas e respostas do modelo">
-          <Link to="/prompts" className="text-sm font-semibold text-emerald-600">
+          <Link to="/prompts" className="text-sm font-semibold text-blue-600">
             Abrir análises →
           </Link>
         </DashboardCard>
         <DashboardCard title="Ambientes" description="Configure destinos e segredos para execuções">
-          <Link to="/environments" className="text-sm font-semibold text-emerald-600">
+          <Link to="/environments" className="text-sm font-semibold text-blue-600">
             Gerenciar ambientes →
           </Link>
         </DashboardCard>
         <DashboardCard title="Codex" description="Central de modelos e requisições sob medida">
-          <Link to="/codex" className="text-sm font-semibold text-emerald-600">
+          <Link to="/codex" className="text-sm font-semibold text-blue-600">
             Abrir Codex →
           </Link>
         </DashboardCard>

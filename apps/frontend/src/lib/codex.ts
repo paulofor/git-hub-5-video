@@ -139,7 +139,7 @@ export const formatDuration = (milliseconds?: number) => {
 export const codexStatusStyles: Record<CodexStatus, string> = {
   PENDING: 'bg-slate-200 text-slate-700',
   RUNNING: 'bg-amber-200 text-amber-800 animate-pulse',
-  COMPLETED: 'bg-emerald-200 text-emerald-800',
+  COMPLETED: 'bg-blue-200 text-blue-800',
   FAILED: 'bg-red-200 text-red-800',
   CANCELLED: 'bg-slate-300 text-slate-700'
 };

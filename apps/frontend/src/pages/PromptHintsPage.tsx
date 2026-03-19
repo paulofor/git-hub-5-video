@@ -212,7 +212,7 @@ export default function PromptHintsPage() {
             <button
               type="submit"
               disabled={saving}
-              className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {saving ? 'Salvando...' : editingHint ? 'Atualizar item' : 'Cadastrar item'}
             </button>
@@ -226,7 +226,7 @@ export default function PromptHintsPage() {
               </button>
             )}
             {formError && <span className="text-sm text-red-500">{formError}</span>}
-            {formSuccess && <span className="text-sm text-emerald-600">{formSuccess}</span>}
+            {formSuccess && <span className="text-sm text-blue-600">{formSuccess}</span>}
           </div>
         </form>
       </div>

@@ -78,7 +78,7 @@ export default function ProblemDetailPage() {
           <h2 className="text-2xl font-semibold">Detalhes do problema</h2>
           {problem && <p className="text-sm text-slate-600 dark:text-slate-300">{problem.title}</p>}
         </div>
-        <Link to="/problems" className="text-sm font-medium text-emerald-600 hover:underline dark:text-emerald-400">
+        <Link to="/problems" className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">
           Voltar para problemas
         </Link>
       </div>

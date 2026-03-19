@@ -574,7 +574,7 @@ export default function CodexPage() {
               )}
             </select>
             {selectedModel && (
-              <div className="rounded-md border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-900/20 dark:text-emerald-200">
+              <div className="rounded-md border border-blue-200 bg-blue-50/70 px-3 py-2 text-xs text-blue-700 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-200">
                 <p className="font-semibold">
                   Valores por 1M tokens para {selectedModel.displayName ?? selectedModel.modelName}:
                 </p>
@@ -689,7 +689,7 @@ export default function CodexPage() {
                 <p className="font-medium text-slate-700 dark:text-slate-200">Itens opcionais para complementar o prompt</p>
                 <Link
                   to="/prompt-hints"
-                  className="text-xs font-semibold text-emerald-600 hover:text-emerald-500"
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-500"
                 >
                   Gerenciar itens
                 </Link>
@@ -766,12 +766,12 @@ export default function CodexPage() {
             <button
               type="submit"
               disabled={loading || environmentOptions.length === 0 || modelOptions.length === 0}
-              className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {loading ? 'Enviando...' : 'Enviar para o Codex'}
             </button>
             {error && <span className="text-sm text-red-500">{error}</span>}
-            {successMessage && <span className="text-sm text-emerald-600">{successMessage}</span>}
+            {successMessage && <span className="text-sm text-blue-600">{successMessage}</span>}
           </div>
         </form>
       </div>
@@ -802,7 +802,7 @@ export default function CodexPage() {
               {paginatedRequests.map((item) => (
                 <tr key={item.id}>
                   <td className="px-4 py-3 text-slate-500">
-                    <Link to={`/codex/requests/${item.id}`} className="text-emerald-700 hover:underline">
+                    <Link to={`/codex/requests/${item.id}`} className="text-blue-700 hover:underline">
                       {formatDateTime(item.createdAt)}
                     </Link>
                     <div className="text-xs text-slate-400">ID #{item.id}</div>
@@ -887,15 +887,15 @@ export default function CodexPage() {
                   </td>
                   <td className="px-4 py-3">
                     <details>
-                      <summary className="cursor-pointer text-emerald-600">Ver prompt</summary>
+                      <summary className="cursor-pointer text-blue-600">Ver prompt</summary>
                       <button
                         type="button"
                         onClick={() => handleCopyPrompt(item.prompt)}
-                        className="mt-2 text-xs font-semibold text-emerald-600 hover:text-emerald-700"
+                        className="mt-2 text-xs font-semibold text-blue-600 hover:text-blue-700"
                       >
                         Copiar prompt
                       </button>
-                      <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-slate-900/90 p-3 text-xs text-emerald-100">
+                      <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-slate-900/90 p-3 text-xs text-blue-100">
                         {item.prompt}
                       </pre>
                     </details>
@@ -903,8 +903,8 @@ export default function CodexPage() {
                   <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
                     {item.responseText ? (
                       <details>
-                        <summary className="cursor-pointer text-emerald-600">Ver resposta</summary>
-                        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-slate-900/90 p-3 text-xs text-emerald-100">
+                        <summary className="cursor-pointer text-blue-600">Ver resposta</summary>
+                        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-slate-900/90 p-3 text-xs text-blue-100">
                           {item.responseText}
                         </pre>
                       </details>
@@ -918,14 +918,14 @@ export default function CodexPage() {
                         <p className="whitespace-pre-line">
                           {item.userComment.length > 200 ? `${item.userComment.slice(0, 200)}…` : item.userComment}
                         </p>
-                        <Link to={`/codex/requests/${item.id}`} className="text-emerald-600 hover:underline">
+                        <Link to={`/codex/requests/${item.id}`} className="text-blue-600 hover:underline">
                           Ver detalhes
                         </Link>
                       </div>
                     ) : (
                       <div className="flex flex-col gap-1">
                         <span className="text-slate-500">—</span>
-                        <Link to={`/codex/requests/${item.id}`} className="text-emerald-600 hover:underline">
+                        <Link to={`/codex/requests/${item.id}`} className="text-blue-600 hover:underline">
                           Adicionar comentário
                         </Link>
                       </div>

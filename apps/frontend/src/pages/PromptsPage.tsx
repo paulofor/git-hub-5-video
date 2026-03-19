@@ -81,8 +81,8 @@ export default function PromptsPage() {
                 </td>
                 <td className="px-4 py-3">
                   <details>
-                    <summary className="cursor-pointer text-emerald-600">Ver prompt</summary>
-                    <pre className="mt-2 whitespace-pre-wrap rounded bg-slate-900/90 p-3 text-xs text-emerald-100">
+                    <summary className="cursor-pointer text-blue-600">Ver prompt</summary>
+                    <pre className="mt-2 whitespace-pre-wrap rounded bg-slate-900/90 p-3 text-xs text-blue-100">
                       {prompt.prompt}
                     </pre>
                   </details>
