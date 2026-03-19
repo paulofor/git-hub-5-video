@@ -1,6 +1,6 @@
 services:
   backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/paulofor/ai-hub-3-backend:latest}
+    image: ${BACKEND_IMAGE:-ghcr.io/paulofor/ai-hub-5-backend:latest}
     build:
       context: ./apps/backend
     command: >
@@ -23,7 +23,7 @@ services:
         aliases:
           - backend
   frontend:
-    image: ${FRONTEND_IMAGE:-ghcr.io/paulofor/ai-hub-3-frontend:latest}
+    image: ${FRONTEND_IMAGE:-ghcr.io/paulofor/ai-hub-5-frontend:latest}
     build:
       context: ./apps/frontend
     env_file:
@@ -39,7 +39,7 @@ services:
         aliases:
           - aihub-frontend
   sandbox-orchestrator:
-    image: ${SANDBOX_ORCHESTRATOR_IMAGE:-ghcr.io/paulofor/ai-hub-3-sandbox:latest}
+    image: ${SANDBOX_ORCHESTRATOR_IMAGE:-ghcr.io/paulofor/ai-hub-5-sandbox:latest}
     build:
       context: ./apps/sandbox-orchestrator
     env_file:
