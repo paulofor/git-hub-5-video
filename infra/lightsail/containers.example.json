@@ -1,0 +1,48 @@
+{
+  "serviceName": "ai-hub",
+  "containers": {
+    "backend": {
+      "image": "<aws-account-id>.dkr.ecr.<region>.amazonaws.com/ai-hub-3-backend:latest",
+      "command": ["java", "-jar", "app.jar"],
+      "ports": { "8081": "HTTP" },
+      "environment": {
+        "DB_URL": "jdbc:postgresql://db.internal:5432/aihub",
+        "DB_USER": "aihub",
+        "DB_PASS": "<secret>",
+        "OPENAI_API_KEY": "<secret>",
+        "GITHUB_APP_ID": "<id>",
+        "GITHUB_PRIVATE_KEY_PEM": "<pem>",
+        "GITHUB_WEBHOOK_SECRET": "<secret>",
+        "HUB_PUBLIC_URL": "https://<lightsail-domain>",
+        "HUB_ALLOWED_ORIGINS": "https://<lightsail-domain>"
+      }
+    },
+    "frontend": {
+      "image": "<aws-account-id>.dkr.ecr.<region>.amazonaws.com/ai-hub-3-frontend:latest",
+      "ports": { "80": "HTTP" },
+      "environment": {
+        "VITE_API_BASE_URL": "/api"
+      }
+    },
+    "sandbox-orchestrator": {
+      "image": "<aws-account-id>.dkr.ecr.<region>.amazonaws.com/ai-hub-3-sandbox:latest",
+      "ports": { "8083": "HTTP" },
+      "environment": {
+        "PORT": "8083",
+        "SANDBOX_SLUG_PREFIX": "",
+        "SANDBOX_SLUG_SUFFIX": "-sandbox"
+      }
+    }
+  },
+  "publicEndpoint": {
+    "containerName": "frontend",
+    "containerPort": 80,
+    "healthCheck": {
+      "path": "/",
+      "intervalSeconds": 60,
+      "timeoutSeconds": 5,
+      "healthyThreshold": 2,
+      "unhealthyThreshold": 2
+    }
+  }
+}

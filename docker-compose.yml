@@ -1,0 +1,68 @@
+services:
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/paulofor/ai-hub-3-backend:latest}
+    build:
+      context: ./apps/backend
+    command: >
+      /bin/sh -c "if [ -f /run/secrets/openai-token/openai_api_key ]; then
+        export OPENAI_API_KEY=$(cat /run/secrets/openai-token/openai_api_key);
+      fi;
+      exec java -jar /app/app.jar"
+    env_file:
+      - apps/backend/.env.example
+      - .env
+    depends_on:
+      - sandbox-orchestrator
+    volumes:
+      - ./infra:/infra
+      - ${OPENAI_TOKEN_HOST_DIR:-/root/infra/openai-token}:/run/secrets/openai-token:ro
+    ports:
+      - "${BACKEND_HTTP_PORT:-8081}:8081"
+    networks:
+      default:
+        aliases:
+          - backend
+  frontend:
+    image: ${FRONTEND_IMAGE:-ghcr.io/paulofor/ai-hub-3-frontend:latest}
+    build:
+      context: ./apps/frontend
+    env_file:
+      - apps/frontend/.env.example
+      - .env
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_HTTP_PORT:-8082}:80"
+    networks:
+      default:
+      public-net:
+        aliases:
+          - aihub-frontend
+  sandbox-orchestrator:
+    image: ${SANDBOX_ORCHESTRATOR_IMAGE:-ghcr.io/paulofor/ai-hub-3-sandbox:latest}
+    build:
+      context: ./apps/sandbox-orchestrator
+    env_file:
+      - apps/sandbox-orchestrator/.env.example
+      - .env
+    volumes:
+      - ${OPENAI_TOKEN_HOST_DIR:-/root/infra/openai-token}:/run/secrets/openai-token:ro
+      - ${SANDBOX_WORKDIR:-/root/ai-hub/infra/src}:${SANDBOX_WORKDIR:-/root/ai-hub/src}
+    ports:
+      - "${SANDBOX_ORCHESTRATOR_HTTP_PORT:-8083}:8083"
+    command: >
+      /bin/sh -c "if [ -f /run/secrets/openai-token/openai_api_key ]; then
+        export OPENAI_API_KEY=$(cat /run/secrets/openai-token/openai_api_key);
+      fi;
+      exec node dist/src/index.js"
+    networks:
+      default:
+        aliases:
+          - sandbox-orchestrator
+      public-net:
+        aliases:
+          - sandbox-orchestrator
+networks:
+  default:
+  public-net:
+    external: true

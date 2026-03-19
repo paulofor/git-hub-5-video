@@ -1,0 +1,37 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-user-table
+      author: ai-hub
+      preConditions:
+        onFail: MARK_RAN
+        dbms:
+          type: mysql
+      changes:
+        - sql:
+            dbms: mysql
+            splitStatements: true
+            stripComments: true
+            sql: |
+              CREATE TABLE users (
+                id BIGINT NOT NULL AUTO_INCREMENT,
+                email VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                UNIQUE KEY uk_users_email (email)
+              ) ENGINE=InnoDB;
+
+  - changeSet:
+      id: 002-add-last-login
+      author: ai-hub
+      preConditions:
+        onFail: MARK_RAN
+        dbms:
+          type: mysql
+      changes:
+        - sql:
+            dbms: mysql
+            splitStatements: true
+            stripComments: true
+            sql: |
+              ALTER TABLE users
+                ADD COLUMN last_login_at DATETIME NULL;

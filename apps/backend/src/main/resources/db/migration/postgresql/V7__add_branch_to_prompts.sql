@@ -1,0 +1,2 @@
+ALTER TABLE prompts
+    ADD COLUMN branch VARCHAR(200) NOT NULL DEFAULT 'main';

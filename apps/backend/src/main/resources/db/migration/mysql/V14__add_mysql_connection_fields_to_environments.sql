@@ -1,0 +1,6 @@
+ALTER TABLE environments
+    ADD COLUMN db_host VARCHAR(255) NULL,
+    ADD COLUMN db_port INT NULL,
+    ADD COLUMN db_name VARCHAR(128) NULL,
+    ADD COLUMN db_user VARCHAR(128) NULL,
+    ADD COLUMN db_password VARCHAR(255) NULL;

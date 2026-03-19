@@ -1,0 +1,78 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:h2:mem:hub;MODE=MySQL;DATABASE_TO_LOWER=TRUE;NON_KEYWORDS=VALUE}
+    username: ${DB_USER:sa}
+    password: ${DB_PASS:}
+    hikari:
+      initialization-fail-timeout: 0
+      connection-timeout: 60000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  flyway:
+    locations: classpath:db/migration/{vendor}
+    baseline-on-migrate: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+
+hub:
+  github:
+    org-default: ${GITHUB_ORG_DEFAULT:}
+    app-id: ${GITHUB_APP_ID:}
+    installation-id: ${GITHUB_INSTALLATION_ID:0}
+    webhook-secret: ${GITHUB_WEBHOOK_SECRET:}
+  openai:
+    api-key: ${OPENAI_API_KEY:}
+    model: ${OPENAI_MODEL:gpt-4.1-mini}
+  codex:
+    api-url: ${CODEX_API_URL:https://api.openai.com}
+    model: ${CODEX_MODEL:gpt-5-codex}
+    economy-model: ${CODEX_MODEL_ECONOMY:gpt-4.1-mini}
+    smart-economy:
+      max-economy-tokens: ${CODEX_SMART_ECONOMY_MAX_TOKENS:1500000}
+    pricing:
+      models:
+        gpt-5-codex:
+          input: 1.25 # US$ 1.25 por 1M de tokens de entrada
+          cached-input: 0.50 # US$ 0.50 por 1M de tokens de entrada cacheados
+          output: 10.0 # US$ 10.00 por 1M de tokens de saída
+        gpt-4.1-mini:
+          input: 0.15 # US$ 0.15 por 1M de tokens de entrada
+          cached-input: 0.06 # US$ 0.06 por 1M de tokens de entrada cacheados
+          output: 0.60 # US$ 0.60 por 1M de tokens de saída
+  logs:
+    max-chars: 20000
+    interpreter:
+      discovery:
+        mode: ${HUB_LOGS_DISCOVERY_MODE:mock}
+        docker:
+          host: ${HUB_LOGS_DISCOVERY_DOCKER_HOST:unix:///var/run/docker.sock}
+          tls-verify: ${HUB_LOGS_DISCOVERY_DOCKER_TLS_VERIFY:false}
+          cert-path: ${HUB_LOGS_DISCOVERY_DOCKER_CERT_PATH:}
+          environment-label: ${HUB_LOGS_DISCOVERY_ENV_LABEL:aihub.environment}
+  cors:
+    allowed-origins: ${HUB_ALLOWED_ORIGINS:}
+    allow-credentials: ${HUB_CORS_ALLOW_CREDENTIALS:false}
+  sandbox:
+    orchestrator:
+      api-url: ${HUB_SANDBOX_ORCHESTRATOR_API_URL:http://sandbox-orchestrator:8083}
+      jobs-path: ${HUB_SANDBOX_ORCHESTRATOR_JOBS_PATH:/jobs}
+    callback:
+      url: ${HUB_SANDBOX_CALLBACK_URL:http://backend:8081/api/codex/requests/callbacks/sandbox}
+      secret: ${HUB_SANDBOX_CALLBACK_SECRET:}
+
+server:
+  port: 8081
+
+springdoc:
+  swagger-ui:
+    path: /swagger
+    display-request-duration: true
+  api-docs:
+    path: /api-docs

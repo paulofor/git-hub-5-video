@@ -1,0 +1,1273 @@
+import { exec as execCallback, spawn } from 'node:child_process';
+import fs from 'node:fs/promises';
+import net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+import { promisify } from 'node:util';
+import OpenAI from 'openai';
+import {
+  ResponseFunctionToolCallItem,
+  ResponseFunctionToolCallOutputItem,
+  ResponseItem,
+  ResponseOutputMessage,
+  ResponseOutputText,
+} from 'openai/resources/responses/responses.js';
+
+import { buildAuthRepoUrl, extractTokenFromRepoUrl, redactUrlCredentials } from './git.js';
+import { JobProcessor, SandboxJob, SandboxProfile } from './types.js';
+
+const exec = promisify(execCallback);
+
+interface ToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+class JobCancelledError extends Error {
+  constructor(message = 'Job cancelado pelo usuário') {
+    super(message);
+    this.name = 'JobCancelledError';
+  }
+}
+
+export class SandboxJobProcessor implements JobProcessor {
+  private readonly openai?: OpenAI;
+  private readonly model: string;
+  private readonly fetchImpl?: (input: string | URL, init?: any) => Promise<any>;
+  private readonly githubApiBase: string;
+  private readonly maxTaskDescriptionChars: number;
+  private readonly toolOutputStringLimit: number;
+  private readonly toolOutputSerializedLimit: number;
+  private readonly httpToolTimeoutMs: number;
+  private readonly httpToolMaxResponseChars: number;
+  private readonly economyModel?: string;
+  private readonly economyMaxTaskDescriptionChars: number;
+  private readonly economyToolOutputStringLimit: number;
+  private readonly economyToolOutputSerializedLimit: number;
+  private readonly economyHttpToolMaxResponseChars: number;
+
+  constructor(
+    apiKey?: string,
+    model = 'gpt-5-codex',
+    openaiClient?: OpenAI,
+    fetchImpl: (input: string | URL, init?: any) => Promise<any> = globalThis.fetch,
+  ) {
+    this.model = model;
+    if (openaiClient) {
+      this.openai = openaiClient;
+    } else if (apiKey) {
+      this.openai = new OpenAI({ apiKey });
+    }
+    this.fetchImpl = fetchImpl;
+    this.githubApiBase = process.env.GITHUB_API_URL ?? 'https://api.github.com';
+    this.maxTaskDescriptionChars = this.parsePositiveInteger(process.env.TASK_DESCRIPTION_MAX_CHARS, 12_000);
+    this.toolOutputStringLimit = this.parsePositiveInteger(process.env.TOOL_OUTPUT_STRING_LIMIT, 12_000);
+    this.toolOutputSerializedLimit = this.parsePositiveInteger(process.env.TOOL_OUTPUT_SERIALIZED_LIMIT, 60_000);
+    this.httpToolTimeoutMs = this.parsePositiveInteger(process.env.HTTP_TOOL_TIMEOUT_MS, 15_000);
+    this.httpToolMaxResponseChars = this.parsePositiveInteger(process.env.HTTP_TOOL_MAX_RESPONSE_CHARS, 20_000);
+    const configuredEconomyModel = process.env.CIFIX_MODEL_ECONOMY ?? process.env.CIFIX_ECONOMY_MODEL;
+    if (configuredEconomyModel && configuredEconomyModel.trim()) {
+      this.economyModel = configuredEconomyModel.trim();
+    } else if (this.model === 'gpt-5-codex') {
+      this.economyModel = 'gpt-4.1-mini';
+    } else {
+      this.economyModel = this.model;
+    }
+
+    const economyTaskLimitRaw = this.parsePositiveInteger(
+      process.env.ECONOMY_TASK_DESCRIPTION_MAX_CHARS,
+      Math.min(this.maxTaskDescriptionChars, 6_000),
+    );
+    this.economyMaxTaskDescriptionChars = Math.min(economyTaskLimitRaw, this.maxTaskDescriptionChars);
+
+    const economyToolOutputLimitRaw = this.parsePositiveInteger(
+      process.env.ECONOMY_TOOL_OUTPUT_STRING_LIMIT,
+      Math.min(this.toolOutputStringLimit, 6_000),
+    );
+    this.economyToolOutputStringLimit = Math.min(economyToolOutputLimitRaw, this.toolOutputStringLimit);
+
+    const economyToolOutputSerializedLimitRaw = this.parsePositiveInteger(
+      process.env.ECONOMY_TOOL_OUTPUT_SERIALIZED_LIMIT,
+      Math.min(this.toolOutputSerializedLimit, 15_000),
+    );
+    this.economyToolOutputSerializedLimit = Math.min(
+      economyToolOutputSerializedLimitRaw,
+      this.toolOutputSerializedLimit,
+    );
+
+    const economyHttpMaxCharsRaw = this.parsePositiveInteger(
+      process.env.ECONOMY_HTTP_TOOL_MAX_RESPONSE_CHARS,
+      Math.min(this.httpToolMaxResponseChars, 8_000),
+    );
+    this.economyHttpToolMaxResponseChars = Math.min(economyHttpMaxCharsRaw, this.httpToolMaxResponseChars);
+  }
+
+  async process(job: SandboxJob): Promise<void> {
+    if (job.cancelRequested) {
+      const now = new Date().toISOString();
+      job.status = 'CANCELLED';
+      job.startedAt = job.startedAt ?? now;
+      job.finishedAt = job.finishedAt ?? now;
+      job.updatedAt = now;
+      job.durationMs = job.durationMs ?? 0;
+      return;
+    }
+
+    job.profile = (job.profile ?? 'STANDARD') as SandboxProfile;
+    const resolvedModel = this.resolveModel(job);
+    job.model = resolvedModel;
+    job.timeoutCount = job.timeoutCount ?? 0;
+    job.httpGetCount = job.httpGetCount ?? 0;
+    job.dbQueryCount = job.dbQueryCount ?? 0;
+
+    const start = new Date();
+    job.startedAt = job.startedAt ?? start.toISOString();
+    job.updatedAt = job.startedAt;
+    job.status = 'RUNNING';
+
+    let workspace: string | undefined;
+    let repoPath: string | undefined;
+
+    try {
+      this.ensureNotCancelled(job);
+      workspace = await this.prepareWorkspace(job);
+      repoPath = path.join(workspace, 'repo');
+      job.sandboxPath = workspace;
+      this.log(job, `workspace criado em ${workspace}`);
+      this.log(job, `perfil ${job.profile} selecionado; modelo ${resolvedModel}`);
+      if (this.isEconomy(job)) {
+        this.log(
+          job,
+          `modo econômico: limite prompt=${this.economyMaxTaskDescriptionChars}, toolOutput=${this.economyToolOutputStringLimit}, http_get=${this.economyHttpToolMaxResponseChars}`,
+        );
+      }
+
+      this.ensureNotCancelled(job);
+      const githubAuth = this.resolveGithubAuth(job);
+      if (githubAuth.token) {
+        this.log(
+          job,
+          `token GitHub obtido de ${githubAuth.source} será usado para clone, push e criação de PR`,
+        );
+      } else {
+        this.log(job, 'nenhum token GitHub configurado; operações autenticadas podem falhar');
+      }
+
+      const cloneUrl = buildAuthRepoUrl(job.repoUrl, githubAuth.token, githubAuth.username);
+      this.log(job, `clonando repositório ${redactUrlCredentials(cloneUrl)} (branch ${job.branch})`);
+      await this.cloneRepository(job, repoPath!, cloneUrl);
+      this.ensureNotCancelled(job);
+      const baseCommit = await this.getHeadCommit(repoPath!);
+      if (!this.openai) {
+        throw new Error('OPENAI_API_KEY não configurada no sandbox orchestrator');
+      }
+
+      this.ensureNotCancelled(job);
+      this.log(job, `iniciando interação com o modelo do sandbox (${resolvedModel})`);
+      const summary = await this.runCodexLoop(job, repoPath!, resolvedModel);
+      job.summary = summary;
+      this.ensureNotCancelled(job);
+      job.changedFiles = await this.collectChangedFiles(repoPath!, baseCommit);
+      this.ensureNotCancelled(job);
+      job.patch = await this.generatePatch(repoPath!, baseCommit);
+      await this.maybeCreatePullRequest(job, repoPath!, githubAuth, baseCommit, job.patch);
+      this.log(job, 'job concluído com sucesso, coletando patch e arquivos alterados');
+      job.status = 'COMPLETED';
+      job.finishedAt = new Date().toISOString();
+    } catch (error) {
+      if (error instanceof JobCancelledError) {
+        job.status = 'CANCELLED';
+        job.error = undefined;
+        this.log(job, 'job cancelado pelo usuário');
+      } else {
+        job.status = 'FAILED';
+        job.error = error instanceof Error ? error.message : String(error);
+        this.log(job, `falha ao processar job: ${job.error}`);
+      }
+    } finally {
+      if (workspace) {
+        this.log(job, `limpando workspace ${workspace}`);
+        await this.cleanup(workspace);
+      }
+      const finished = job.finishedAt ? new Date(job.finishedAt) : new Date();
+      job.finishedAt = finished.toISOString();
+      job.updatedAt = job.finishedAt;
+      if (job.startedAt) {
+        const startMs = Date.parse(job.startedAt);
+        if (Number.isFinite(startMs)) {
+          job.durationMs = Math.max(0, finished.getTime() - startMs);
+        }
+      }
+    }
+  }
+
+  private ensureNotCancelled(job: SandboxJob): void {
+    if (job.cancelRequested) {
+      throw new JobCancelledError();
+    }
+  }
+
+  private async prepareWorkspace(job: SandboxJob): Promise<string> {
+    const baseDir = path.resolve(process.env.SANDBOX_WORKDIR ?? os.tmpdir());
+    const sandboxEnv = process.env.SANDBOX_WORKDIR ?? '<não definido>';
+    this.log(job, `preparando workspace (SANDBOX_WORKDIR=${sandboxEnv}) em ${baseDir}`);
+    try {
+      await fs.mkdir(baseDir, { recursive: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.log(job, `falha ao criar diretório base ${baseDir}: ${message}`);
+      throw new Error(`não foi possível preparar diretório base ${baseDir}: ${message}`);
+    }
+
+    try {
+      const workspace = await fs.mkdtemp(path.join(baseDir, `ai-hub-${job.jobId}-`));
+      this.log(job, `workspace temporário usando ${baseDir} criado com prefixo ai-hub-${job.jobId}-`);
+      return workspace;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const baseDirStatus = await this.describePathStatus(baseDir);
+      this.log(
+        job,
+        `falha ao criar workspace temporário em ${baseDir}: ${message} (status do diretório base: ${baseDirStatus})`,
+      );
+      throw new Error(`não foi possível criar workspace temporário em ${baseDir}: ${message}`);
+    }
+  }
+
+  private resolveGithubAuth(job: SandboxJob): { token?: string; username: string; source: string } {
+    const username = process.env.GITHUB_CLONE_USERNAME ?? 'x-access-token';
+    const candidates: Array<{ token?: string; source: string }> = [
+      { token: process.env.GITHUB_CLONE_TOKEN, source: 'GITHUB_CLONE_TOKEN' },
+      { token: process.env.GITHUB_TOKEN, source: 'GITHUB_TOKEN' },
+      { token: process.env.GITHUB_PR_TOKEN, source: 'GITHUB_PR_TOKEN' },
+      { token: extractTokenFromRepoUrl(job.repoUrl), source: 'repoUrl' },
+    ];
+
+    const selected = candidates.find((candidate) => candidate.token);
+    return { token: selected?.token, username, source: selected?.source ?? 'nenhum' };
+  }
+
+  private async cleanup(workspace: string): Promise<void> {
+    try {
+      await fs.rm(workspace, { recursive: true, force: true });
+    } catch (err) {
+      // noop
+    }
+  }
+
+  private async cloneRepository(job: SandboxJob, repoPath: string, cloneUrl: string): Promise<void> {
+    await exec(`git clone --branch ${job.branch} --depth 1 ${cloneUrl} ${repoPath}`);
+    if (job.commitHash) {
+      this.log(job, `checando commit ${job.commitHash}`);
+      await exec(`git checkout ${job.commitHash}`, { cwd: repoPath });
+    }
+  }
+
+  private buildTools(repoPath: string) {
+    return [
+      {
+        type: 'function' as const,
+        name: 'run_shell',
+        parameters: {
+          type: 'object',
+          properties: {
+            command: { type: 'array', items: { type: 'string' } },
+            cwd: { type: 'string', description: 'Diretório relativo ao repo' },
+          },
+          required: ['command', 'cwd'],
+          additionalProperties: false,
+        },
+        strict: true,
+        description: 'Executa um comando de shell dentro do sandbox clonado',
+      },
+      {
+        type: 'function' as const,
+        name: 'read_file',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string' },
+          },
+          required: ['path'],
+          additionalProperties: false,
+        },
+        strict: true,
+        description: 'Lê um arquivo do repositório clonado',
+      },
+      {
+        type: 'function' as const,
+        name: 'write_file',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string' },
+            content: { type: 'string' },
+          },
+          required: ['path', 'content'],
+          additionalProperties: false,
+        },
+        strict: true,
+        description: 'Escreve um arquivo dentro do repositório clonado',
+      },
+      {
+        type: 'function' as const,
+        name: 'http_get',
+        parameters: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', description: 'URL http(s) pública para consulta' },
+            headers: {
+              type: 'object',
+              additionalProperties: { type: 'string' },
+              description: 'Cabeçalhos opcionais; Authorization é ignorado',
+            },
+          },
+          required: ['url'],
+          additionalProperties: false,
+        },
+        strict: true,
+        description: 'Busca um recurso público via HTTP GET (bloqueia hosts internos e localhost)',
+      },
+    ];
+  }
+
+  private async runCodexLoop(job: SandboxJob, repoPath: string, model: string): Promise<string> {
+    this.ensureNotCancelled(job);
+    job.taskDescription = this.sanitizeTaskDescription(job.taskDescription, job);
+
+    const tools = this.buildTools(repoPath);
+    const profileInstruction = this.isEconomy(job)
+      ? `
+Modo econômico ativo: minimize leituras extensas, priorize comandos curtos, escreva respostas objetivas e evite reexecuções desnecessárias.`
+      : '';
+    const messages: ResponseItem[] = [
+      {
+        type: 'message',
+        id: this.sanitizeId('msg_system'),
+        role: 'system',
+        content: [
+          {
+            type: 'input_text',
+            text: `Você está operando em um sandbox isolado em ${repoPath}. Use as tools para ler, alterar arquivos e executar comandos. Test command sugerido: ${
+              job.testCommand ?? 'n/d'
+            }. Sempre trabalhe somente dentro do diretório do repositório. Prefira usar o comando rg para buscas recursivas em vez de grep -R, que é mais lento.${profileInstruction}`,
+          },
+        ],
+      },
+      {
+        type: 'message',
+        id: this.sanitizeId('msg_user'),
+        role: 'user',
+        content: [{ type: 'input_text', text: job.taskDescription }],
+      },
+    ];
+
+    let summary = '';
+    this.log(job, 'loop do modelo iniciado; aguardando chamadas de ferramenta');
+
+    while (true) {
+      this.ensureNotCancelled(job);
+      this.log(job, `enviando mensagens para o modelo (mensagens=${messages.length}, tools=${tools.length})`);
+      this.ensureNotCancelled(job);
+      const response = await this.openai!.responses.create({
+        model,
+        input: messages,
+        tools,
+      });
+      this.log(
+        job,
+        `resposta do modelo recebida (responseId=${response.id ?? 'n/d'}, output_items=${(response.output ?? []).length})`,
+      );
+
+      this.addUsageMetrics(job, (response as any).usage);
+
+      const output = response.output ?? [];
+      const normalizedOutput: ResponseItem[] = output.map((item, index) => {
+        if (item.type === 'function_call') {
+          const callId = this.extractCallId(item, index);
+          const messageId = this.sanitizeId(item.id ?? callId);
+          return { ...item, id: messageId, call_id: callId } as ResponseItem;
+        }
+        return item as ResponseItem;
+      });
+      const assistantMessage = normalizedOutput.find((item) => item.type === 'message') as ResponseOutputMessage | undefined;
+      const toolCalls = normalizedOutput.filter((item) => item.type === 'function_call') as ResponseFunctionToolCallItem[];
+
+      const toolCallDetails =
+        toolCalls
+          .map((call, idx) => {
+            const callId = call.call_id ?? this.extractCallId(call, idx);
+            return `${call.name ?? 'sem_nome'}(callId=${callId}, id=${call.id ?? 'n/d'})`;
+          })
+          .join(', ') || 'nenhum';
+      const assistantTextPreview = this.truncate(this.extractOutputText(assistantMessage?.content) ?? '', 240);
+      this.log(
+        job,
+        `modelo retornou ${toolCalls.length} chamadas de ferramenta e mensagem=${Boolean(
+          assistantMessage,
+        )} (toolCalls=[${toolCallDetails}], textPreview="${assistantTextPreview}")`,
+      );
+
+      const text = this.extractOutputText(assistantMessage?.content);
+      if (toolCalls.length === 0) {
+        summary = text ?? summary;
+        if (assistantMessage) {
+          messages.push(assistantMessage);
+        }
+        this.log(job, `resumo final do modelo: "${this.truncate(summary, 240)}"`);
+        this.log(job, 'modelo concluiu sem novas tool calls');
+        return summary;
+      }
+
+      messages.push(...normalizedOutput);
+
+      const toolMessages: ResponseFunctionToolCallOutputItem[] = [];
+      for (const [index, call] of toolCalls.entries()) {
+        this.ensureNotCancelled(job);
+        const parsedArgs = this.parseArguments(call.arguments);
+        const callId = call.call_id ?? this.extractCallId(call, index);
+        const outputId = this.normalizeFunctionCallOutputId(callId, `call_${index}`);
+        const toolCall: ToolCall = {
+          id: callId,
+          name: call.name ?? '',
+          arguments: parsedArgs ?? {},
+        };
+        this.log(
+          job,
+          `executando tool ${toolCall.name} (callId=${callId}, args=${JSON.stringify(toolCall.arguments)})`,
+        );
+        try {
+          const result = await this.dispatchTool(toolCall, repoPath, job);
+          this.logJson(job, `resultado da tool ${toolCall.name} (callId=${callId})`, result);
+          toolMessages.push({
+            id: outputId,
+            call_id: callId,
+            output: this.prepareToolOutput(result, job),
+            type: 'function_call_output',
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          this.log(job, `erro ao executar tool ${toolCall.name}: ${message}`);
+          toolMessages.push({
+            id: outputId,
+            call_id: callId,
+            output: this.prepareToolOutput({ error: message }, job),
+            type: 'function_call_output',
+          });
+        }
+      }
+
+      messages.push(...toolMessages);
+    }
+  }
+
+  private extractOutputText(content: ResponseOutputMessage['content'] | undefined): string | undefined {
+    if (!Array.isArray(content)) {
+      return undefined;
+    }
+    const texts = content
+      .filter((item) => item.type === 'output_text')
+      .map((item) => (item as ResponseOutputText).text.trim())
+      .filter((text) => text.length > 0);
+
+    if (texts.length === 0) {
+      return undefined;
+    }
+    return texts.join('\n').trim();
+  }
+
+  private addUsageMetrics(job: SandboxJob, usage: unknown): void {
+    if (!usage || typeof usage !== 'object') {
+      return;
+    }
+
+    const source = usage as Record<string, unknown>;
+    const promptTokens = this.readNumberField(source, ['prompt_tokens', 'input_tokens', 'promptTokens']);
+    const completionTokens = this.readNumberField(source, [
+      'completion_tokens',
+      'output_tokens',
+      'completionTokens',
+    ]);
+    const totalTokens =
+      this.readNumberField(source, ['total_tokens', 'totalTokens']) ??
+      (promptTokens !== undefined && completionTokens !== undefined ? promptTokens + completionTokens : undefined);
+    const cost = this.readNumberField(source, ['total_cost', 'cost']);
+
+    if (promptTokens !== undefined) {
+      job.promptTokens = (job.promptTokens ?? 0) + promptTokens;
+    }
+    if (completionTokens !== undefined) {
+      job.completionTokens = (job.completionTokens ?? 0) + completionTokens;
+    }
+    if (totalTokens !== undefined) {
+      job.totalTokens = (job.totalTokens ?? 0) + totalTokens;
+    }
+    if (cost !== undefined) {
+      job.cost = (job.cost ?? 0) + cost;
+    }
+  }
+
+  private readNumberField(source: Record<string, unknown>, candidates: string[]): number | undefined {
+    for (const key of candidates) {
+      const value = source[key];
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+      if (typeof value === 'string') {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) {
+          return parsed;
+        }
+      }
+    }
+    return undefined;
+  }
+
+  private parseArguments(raw: unknown): Record<string, unknown> | undefined {
+    if (!raw) {
+      return undefined;
+    }
+    if (typeof raw === 'string') {
+      try {
+        return JSON.parse(raw);
+      } catch (err) {
+        return undefined;
+      }
+    }
+    if (typeof raw === 'object') {
+      return raw as Record<string, unknown>;
+    }
+    return undefined;
+  }
+
+  private async dispatchTool(call: ToolCall, repoPath: string, job: SandboxJob): Promise<unknown> {
+    this.ensureNotCancelled(job);
+    switch (call.name) {
+      case 'run_shell':
+        return this.handleRunShell(call.arguments, repoPath, job);
+      case 'read_file':
+        return this.handleReadFile(call.arguments, repoPath);
+      case 'write_file':
+        return this.handleWriteFile(call.arguments, repoPath, job);
+      case 'http_get':
+        return this.handleHttpGet(call.arguments, job);
+      default:
+        return { error: `Ferramenta desconhecida: ${call.name}` };
+    }
+  }
+
+  private sanitizeHeaders(raw: unknown): Record<string, string> | undefined {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return undefined;
+    }
+
+    const headers: Record<string, string> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      if (typeof value !== 'string') {
+        continue;
+      }
+      const normalizedKey = key.toLowerCase();
+      if (normalizedKey === 'authorization') {
+        continue;
+      }
+      headers[normalizedKey] = value;
+    }
+
+    return Object.keys(headers).length > 0 ? headers : undefined;
+  }
+
+  private validateExternalUrl(rawUrl: string): URL {
+    let parsed: URL;
+    try {
+      parsed = new URL(rawUrl);
+    } catch {
+      throw new Error('URL inválida');
+    }
+
+    if (!['https:', 'http:'].includes(parsed.protocol)) {
+      throw new Error('Apenas URLs http(s) são permitidas');
+    }
+
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === 'localhost' || hostname === '0.0.0.0' || hostname === '::1') {
+      throw new Error('Acesso a hosts locais não é permitido');
+    }
+
+    const ipVersion = net.isIP(hostname);
+    if (ipVersion === 4 || ipVersion === 6) {
+      if (this.isPrivateIp(hostname, ipVersion)) {
+        throw new Error('Acesso a endereços privados foi bloqueado');
+      }
+    }
+
+    return parsed;
+  }
+
+  private isPrivateIp(host: string, version: 4 | 6): boolean {
+    if (version === 6) {
+      return host === '::1' || host.startsWith('fd') || host.startsWith('fc');
+    }
+
+    const octets = host.split('.').map(Number);
+    if (octets.length !== 4 || octets.some((octet) => Number.isNaN(octet))) {
+      return true;
+    }
+
+    const [a, b] = octets;
+    if (a === 10) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    return false;
+  }
+
+  private async handleHttpGet(args: Record<string, unknown>, job: SandboxJob) {
+    if (!this.fetchImpl) {
+      throw new Error('fetch indisponível para http_get');
+    }
+
+    job.httpGetCount = (job.httpGetCount ?? 0) + 1;
+
+    const urlArg = typeof args.url === 'string' ? args.url : undefined;
+    if (!urlArg) {
+      throw new Error('url é obrigatório para http_get');
+    }
+
+    const url = this.validateExternalUrl(urlArg);
+    const headers = this.sanitizeHeaders(args.headers);
+    const maxResponseChars = this.resolveHttpToolMaxResponseChars(job);
+
+    this.log(job, `http_get: ${url.toString()} (timeoutMs=${this.httpToolTimeoutMs}, maxResponseChars=${maxResponseChars})`);
+
+    const controller = AbortSignal.timeout(this.httpToolTimeoutMs);
+    let response: any;
+    try {
+      response = await this.fetchImpl(url.toString(), { method: 'GET', headers, signal: controller });
+    } catch (err) {
+      if (this.isTimeoutError(err)) {
+        job.timeoutCount = (job.timeoutCount ?? 0) + 1;
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`falha ao buscar URL: ${message}`);
+    }
+
+    const headersObject: Record<string, string> = {};
+    try {
+      for (const [key, value] of response.headers?.entries?.() ?? []) {
+        headersObject[key] = value;
+      }
+    } catch {
+      // noop - headers optional
+    }
+
+    let body = '';
+    let truncated = false;
+    try {
+      const text = await response.text();
+      const truncation = this.truncateStringValue(text, maxResponseChars);
+      body = truncation.value;
+      truncated = truncation.truncated;
+      if (truncation.truncated) {
+        this.log(job, `http_get: corpo truncado (omitiu ${truncation.omitted} caracteres)`);
+      }
+    } catch (err) {
+      if (this.isTimeoutError(err)) {
+        job.timeoutCount = (job.timeoutCount ?? 0) + 1;
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`falha ao ler corpo da resposta: ${message}`);
+    }
+
+    return {
+      url: url.toString(),
+      status: typeof response.status === 'number' ? response.status : undefined,
+      statusText: response.statusText,
+      headers: headersObject,
+      body,
+      truncated,
+    };
+  }
+
+  private isTimeoutError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+    const name = (error.name ?? '').toLowerCase();
+    const message = (error.message ?? '').toLowerCase();
+    return name.includes('abort') || name.includes('timeout') || message.includes('aborted') || message.includes('timeout');
+  }
+
+  private resolvePath(repoPath: string, requested: string | undefined, job?: SandboxJob): string {
+    if (!requested) {
+      throw new Error('path ausente');
+    }
+    const sanitized = this.sanitizeRequestedPath(requested);
+    if (!sanitized) {
+      throw new Error('path ausente');
+    }
+    if (sanitized !== requested && job) {
+      this.log(job, `normalizando caminho solicitado de "${requested}" para "${sanitized}"`);
+    }
+    const absolute = path.resolve(repoPath, sanitized);
+    if (!absolute.startsWith(repoPath)) {
+      throw new Error('Acesso a caminho fora do sandbox bloqueado');
+    }
+    return absolute;
+  }
+
+  private normalizeRepoPath(
+    repoPath: string,
+    requested: string | undefined,
+  ): { absolute: string; relative: string } {
+    const absolute = this.resolvePath(repoPath, requested);
+    const relative = path.relative(repoPath, absolute) || path.basename(absolute);
+    return { absolute, relative };
+  }
+
+  private async handleRunShell(args: Record<string, unknown>, repoPath: string, job: SandboxJob) {
+    let command = Array.isArray(args.command) ? (args.command as string[]) : undefined;
+    if (!command || command.length === 0) {
+      throw new Error('command é obrigatório para run_shell');
+    }
+    const cwdArg = typeof args.cwd === 'string' ? args.cwd : undefined;
+    const cwd = cwdArg ? this.resolvePath(repoPath, cwdArg, job) : repoPath;
+    await this.assertDirectoryExists(cwd);
+
+    command = command.map((part) => part.trim());
+    const isRecursiveGrep = command[0] === 'grep' && command[1] === '-R';
+    if (isRecursiveGrep && command.length <= 2) {
+      const message = 'grep -R detectado. Use rg <padrao> <caminho> para buscas recursivas no sandbox.';
+      this.log(job, message);
+      throw new Error(message);
+    }
+
+    if (isRecursiveGrep) {
+      const rgCommand = ['rg', ...command.slice(2)];
+      this.log(
+        job,
+        `comando grep -R detectado; substituindo por rg para busca recursiva: ${command.join(' ')} -> ${rgCommand.join(
+          ' ',
+        )}`,
+      );
+      command = rgCommand;
+    }
+
+    const joined = command.join(' ');
+    const timeoutEnv = Number(process.env.RUN_SHELL_TIMEOUT_MS);
+    const defaultTimeoutMs = Number.isFinite(timeoutEnv) && timeoutEnv > 0 ? timeoutEnv : 300_000;
+    const isMavenCommand = path.basename(command[0]) === 'mvn';
+    const mavenTimeoutMs = 15 * 60 * 1000;
+    const timeoutMs = isMavenCommand ? Math.max(defaultTimeoutMs, mavenTimeoutMs) : defaultTimeoutMs;
+    if (isMavenCommand && timeoutMs > defaultTimeoutMs) {
+      this.log(job, 'mvn detectado; aumentando timeout para 15 minutos');
+    }
+    const maxBufferEnv = Number(process.env.RUN_SHELL_MAX_BUFFER_BYTES);
+    const maxBuffer = Number.isFinite(maxBufferEnv) && maxBufferEnv > 0 ? maxBufferEnv : 5 * 1024 * 1024;
+
+    this.log(
+      job,
+      `run_shell: ${joined} (cwd=${cwd}, timeoutMs=${timeoutMs}, maxBufferBytes=${maxBuffer})`,
+    );
+
+    let stdout = '';
+    let stderr = '';
+    let stdoutTruncated = false;
+    let stderrTruncated = false;
+    let timedOut = false;
+
+    const child = spawn(command[0], command.slice(1), { cwd });
+
+    const appendWithLimit = (current: string, chunk: string): { value: string; truncated: boolean } => {
+      if (current.length >= maxBuffer) {
+        return { value: current, truncated: true };
+      }
+      const remaining = maxBuffer - current.length;
+      if (chunk.length <= remaining) {
+        return { value: current + chunk, truncated: false };
+      }
+      return { value: current + chunk.slice(0, remaining), truncated: true };
+    };
+
+    child.stdout.on('data', (data: Buffer) => {
+      const chunk = data.toString();
+      const result = appendWithLimit(stdout, chunk);
+      stdout = result.value;
+      stdoutTruncated = stdoutTruncated || result.truncated;
+      this.log(job, `run_shell stdout: ${this.truncate(chunk, 500)}`);
+    });
+
+    child.stderr.on('data', (data: Buffer) => {
+      const chunk = data.toString();
+      const result = appendWithLimit(stderr, chunk);
+      stderr = result.value;
+      stderrTruncated = stderrTruncated || result.truncated;
+      this.log(job, `run_shell stderr: ${this.truncate(chunk, 500)}`);
+    });
+
+    const timeoutHandle = setTimeout(() => {
+      timedOut = true;
+      this.log(job, `run_shell atingiu timeout de ${timeoutMs}ms; finalizando processo`);
+      child.kill('SIGKILL');
+    }, timeoutMs);
+
+    const exitResult = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+      child.on('error', (err) => {
+        clearTimeout(timeoutHandle);
+        reject(err);
+      });
+      child.on('close', (code, signal) => {
+        clearTimeout(timeoutHandle);
+        resolve({ code, signal });
+      });
+    });
+
+    if (stdoutTruncated || stderrTruncated) {
+      this.log(job, 'run_shell output truncado para respeitar maxBuffer');
+    }
+    this.log(
+      job,
+      `run_shell finalizado (code=${exitResult.code}, signal=${exitResult.signal}, timedOut=${timedOut})`,
+    );
+    if (timedOut) {
+      job.timeoutCount = (job.timeoutCount ?? 0) + 1;
+    }
+
+    return {
+      stdout,
+      stderr,
+      exitCode: exitResult.code,
+      signal: exitResult.signal,
+      timedOut,
+      stdoutTruncated,
+      stderrTruncated,
+    };
+  }
+
+  private async handleReadFile(args: Record<string, unknown>, repoPath: string) {
+    const { absolute, relative } = this.normalizeRepoPath(
+      repoPath,
+      typeof args.path === 'string' ? args.path : undefined,
+    );
+    const content = await fs.readFile(absolute, 'utf8');
+    return { path: relative, content };
+  }
+
+  private async handleWriteFile(args: Record<string, unknown>, repoPath: string, job: SandboxJob) {
+    const { absolute, relative } = this.normalizeRepoPath(
+      repoPath,
+      typeof args.path === 'string' ? args.path : undefined,
+    );
+    const content = typeof args.content === 'string' ? args.content : '';
+    await fs.mkdir(path.dirname(absolute), { recursive: true });
+    await fs.writeFile(absolute, content, 'utf8');
+    this.log(job, `write_file: ${absolute}`);
+    return { status: 'ok', path: relative, content };
+  }
+
+  private async collectChangedFiles(repoPath: string, baseCommit?: string): Promise<string[]> {
+    if (!(await this.isGitRepository(repoPath))) {
+      return [];
+    }
+    const { stdout } = await exec(`git diff --name-only ${baseCommit ?? 'HEAD'}`, { cwd: repoPath });
+    return stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+  }
+
+  private async generatePatch(repoPath: string, baseCommit?: string): Promise<string> {
+    if (!(await this.isGitRepository(repoPath))) {
+      return '';
+    }
+    const { stdout } = await exec(`git diff ${baseCommit ?? 'HEAD'}`, { cwd: repoPath });
+    return stdout;
+  }
+
+  private async isGitRepository(repoPath: string): Promise<boolean> {
+    try {
+      await fs.stat(path.join(repoPath, '.git'));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private resolveRepoSlug(job: SandboxJob): string | undefined {
+    if (job.repoSlug) {
+      return job.repoSlug;
+    }
+
+    try {
+      const parsed = new URL(job.repoUrl);
+      if (parsed.hostname.toLowerCase() !== 'github.com') {
+        return undefined;
+      }
+      const parts = parsed.pathname.replace(/\.git$/, '').split('/').filter(Boolean);
+      if (parts.length >= 2) {
+        return `${parts[0]}/${parts[1]}`;
+      }
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  }
+
+  private async getHeadCommit(repoPath: string): Promise<string | undefined> {
+    if (!(await this.isGitRepository(repoPath))) {
+      return undefined;
+    }
+    try {
+      const { stdout } = await exec('git rev-parse HEAD', { cwd: repoPath });
+      return stdout.trim();
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async maybeCreatePullRequest(
+    job: SandboxJob,
+    repoPath: string,
+    githubAuth: { token?: string; username: string; source: string },
+    baseCommit?: string,
+    diffPatch?: string,
+  ): Promise<void> {
+    this.ensureNotCancelled(job);
+    const token = githubAuth.token;
+    if (!token) {
+      this.log(job, 'nenhum token GitHub disponível; ignorando criação de PR');
+      return;
+    }
+
+    const repoSlug = this.resolveRepoSlug(job);
+    if (!repoSlug) {
+      this.log(job, 'repoSlug ausente e repoUrl não é github.com; não é possível criar PR');
+      return;
+    }
+
+    if (!this.fetchImpl) {
+      this.log(job, 'fetch API indisponível; não é possível criar PR');
+      return;
+    }
+
+    if (!(await this.isGitRepository(repoPath))) {
+      this.log(job, 'repositório git ausente, não é possível criar PR');
+      return;
+    }
+
+    const diff = diffPatch ?? (await this.generatePatch(repoPath, baseCommit));
+    if (!diff.trim()) {
+      this.log(job, 'nenhuma alteração detectada; PR não será criado');
+      return;
+    }
+
+    const branchName = `ai-hub/cifix-${job.jobId}`;
+    try {
+      await exec('git config user.email "ai-hub-bot@example.com"', { cwd: repoPath });
+      await exec('git config user.name "AI Hub Bot"', { cwd: repoPath });
+      await exec(`git checkout -B ${branchName}`, { cwd: repoPath });
+      await exec('git add -A', { cwd: repoPath });
+      await exec('git commit -m "AI Hub automated fix"', { cwd: repoPath });
+
+      const authenticatedRemote = buildAuthRepoUrl(
+        job.repoUrl,
+        token,
+        githubAuth.username,
+      );
+      await exec(`git remote set-url origin ${authenticatedRemote}`, { cwd: repoPath });
+      try {
+        await exec(`git push origin ${branchName}`, { cwd: repoPath });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const hint = this.permissionHintFromMessage(message);
+        throw new Error(
+          `Falha ao fazer push para criar PR: ${message}${hint ? ` (${hint})` : ''}`,
+        );
+      }
+
+      const prTitle = this.buildPrTitle(job.summary);
+      const prBody = this.buildPrBody(job.summary, job.taskDescription);
+      const response = await this.fetchImpl(`${this.githubApiBase}/repos/${repoSlug}/pulls`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/vnd.github+json',
+        },
+        body: JSON.stringify({
+          title: prTitle,
+          head: branchName,
+          base: job.branch,
+          body: prBody,
+        }),
+      });
+
+      if (!response.ok) {
+        const message = (await response.text()) || 'erro desconhecido da API do GitHub';
+        const permissionHint =
+          response.status === 401 || response.status === 403
+            ? 'token pode estar sem permissão de pull request ou push'
+            : undefined;
+        throw new Error(
+          `Falha ao criar PR: ${response.status} ${message}${
+            permissionHint ? ` (${permissionHint})` : ''
+          }`,
+        );
+      }
+
+      const pr = await response.json();
+      if (pr?.html_url) {
+        job.pullRequestUrl = pr.html_url;
+        this.log(job, `pull request criado em ${job.pullRequestUrl}`);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.log(job, `falha ao criar pull request: ${message}`);
+    }
+  }
+
+  private permissionHintFromMessage(message: string): string | undefined {
+    const normalized = message.toLowerCase();
+    if (normalized.includes('permission denied') || normalized.includes('authentication failed')) {
+      return 'verifique se o token tem escopos de push e pull_request';
+    }
+    return undefined;
+  }
+
+  private log(job: SandboxJob, message: string) {
+    const entry = `[${new Date().toISOString()}] ${message}`;
+    job.logs.push(entry);
+    console.info(`Sandbox job ${job.jobId}: ${message}`);
+  }
+
+  private async describePathStatus(target: string): Promise<string> {
+    try {
+      const stats = await fs.stat(target);
+      if (stats.isDirectory()) {
+        return 'diretório acessível';
+      }
+      return `existe mas não é diretório (mode=${stats.mode})`;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return `inacessível: ${message}`;
+    }
+  }
+
+  private sanitizeRequestedPath(requested: string | undefined): string | undefined {
+    if (!requested) {
+      return undefined;
+    }
+    const trimmed = requested.trim();
+    const withoutQuotes = trimmed.replace(/^['"`]+|['"`]+$/g, '');
+    const withoutTrailingBraces = withoutQuotes.replace(/[}\]]+$/g, '');
+    const sanitized = withoutTrailingBraces.trim();
+    return sanitized.length > 0 ? sanitized : undefined;
+  }
+
+  private async assertDirectoryExists(cwd: string): Promise<void> {
+    try {
+      const stats = await fs.stat(cwd);
+      if (!stats.isDirectory()) {
+        throw new Error(`cwd não é um diretório: ${cwd}`);
+      }
+    } catch (err) {
+      throw new Error(`cwd não encontrado: ${cwd}`);
+    }
+  }
+
+  private extractCallId(item: { id?: string; call_id?: string }, index: number): string {
+    const fallback = `call_${index}`;
+    const rawId = item.call_id ?? item.id ?? fallback;
+    if (typeof rawId === 'string' && rawId.trim().length > 0) {
+      return rawId;
+    }
+    return fallback;
+  }
+
+  private normalizeFunctionCallOutputId(rawId: string | undefined, fallback: string): string {
+    const base = rawId && rawId.length > 0 ? rawId : fallback;
+    const sanitized = this.sanitizeId(base.replace(/^fco_/, ''));
+    return sanitized.startsWith('fco_') ? sanitized : `fco_${sanitized}`;
+  }
+
+  private sanitizeId(id: string | undefined): string {
+    if (!id) {
+      return 'msg_default';
+    }
+    const sanitized = id.replace(/[^a-zA-Z0-9_-]/g, '_');
+    return sanitized.length > 0 ? sanitized : 'msg_default';
+  }
+
+  private buildPrTitle(summary?: string): string {
+    const defaultTitle = 'AI Hub automated fix';
+    const prefix = 'AI Hub: ';
+    const maxLength = 256;
+
+    if (!summary || summary.trim().length === 0) {
+      return defaultTitle;
+    }
+
+    const availableForSummary = Math.max(1, maxLength - prefix.length);
+    const truncatedSummary = this.truncateWithEllipsis(summary.trim(), availableForSummary);
+    return `${prefix}${truncatedSummary}`;
+  }
+
+  private buildPrBody(summary: string | undefined, taskDescription: string): string {
+    const sections = [
+      'Correção automática gerada pelo sandbox do AI Hub.',
+      taskDescription ? `\n**Descrição da tarefa:**\n${taskDescription}` : undefined,
+      summary ? `\n**Resumo das alterações:**\n${summary}` : undefined,
+    ].filter(Boolean);
+
+    return sections.join('\n');
+  }
+
+  private truncateWithEllipsis(value: string, maxLength: number): string {
+    if (!value || maxLength <= 0) {
+      return '';
+    }
+    if (value.length <= maxLength) {
+      return value;
+    }
+    if (maxLength === 1) {
+      return value.slice(0, maxLength);
+    }
+    return `${value.slice(0, maxLength - 1)}…`;
+  }
+
+  private truncate(value: string, maxLength = 200): string {
+    if (!value) {
+      return '';
+    }
+    if (value.length <= maxLength) {
+      return value;
+    }
+    return `${value.slice(0, maxLength)}... [truncated ${value.length - maxLength} chars]`;
+  }
+
+  private logJson(job: SandboxJob, prefix: string, payload: unknown, maxLength = 2000) {
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(payload);
+    } catch (err) {
+      serialized = `erro ao serializar payload: ${err instanceof Error ? err.message : String(err)}`;
+    }
+    this.log(job, `${prefix}: ${this.truncate(serialized, maxLength)}`);
+  }
+
+  private sanitizeTaskDescription(description: string, job: SandboxJob): string {
+    const { value, truncated, omitted } = this.truncateStringValue(description ?? '', this.maxTaskDescriptionChars);
+    if (truncated) {
+      this.log(
+        job,
+        `taskDescription com ${description.length} caracteres truncado para ${this.maxTaskDescriptionChars} para evitar erro de contexto (omitiu ${omitted} caracteres)`,
+      );
+    }
+    return value;
+  }
+
+  private prepareToolOutput(result: unknown, job: SandboxJob): string {
+    const stringLimit = this.resolveToolOutputStringLimit(job);
+    const serializedLimit = this.resolveToolOutputSerializedLimit(job);
+    const truncation = { truncated: false };
+    const sanitized = this.truncateStringFields(result, stringLimit, truncation);
+    let serialized: string;
+
+    try {
+      serialized = JSON.stringify(sanitized);
+    } catch (err) {
+      serialized = JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+    }
+
+    if (truncation.truncated) {
+      this.log(
+        job,
+        `output de tool truncado para ${stringLimit} caracteres por campo para evitar ultrapassar a janela de contexto`,
+      );
+    }
+
+    const { value, truncated, omitted } = this.truncateStringValue(serialized, serializedLimit);
+    if (truncated) {
+      this.log(
+        job,
+        `output serializado da tool excedeu ${serializedLimit} caracteres e foi truncado (omitiu ${omitted} caracteres)`
+      );
+    }
+    return value;
+  }
+
+  private resolveModel(job: SandboxJob): string {
+    const candidate = typeof job.model === 'string' ? job.model.trim() : '';
+    if (candidate) {
+      return candidate;
+    }
+    if (this.isEconomy(job) && this.economyModel) {
+      return this.economyModel;
+    }
+    return this.model;
+  }
+
+  private isEconomy(job: SandboxJob): boolean {
+    return (job.profile ?? 'STANDARD') === 'ECONOMY';
+  }
+
+  private resolveTaskDescriptionLimit(job: SandboxJob): number {
+    return this.isEconomy(job) ? this.economyMaxTaskDescriptionChars : this.maxTaskDescriptionChars;
+  }
+
+  private resolveToolOutputStringLimit(job: SandboxJob): number {
+    return this.isEconomy(job) ? this.economyToolOutputStringLimit : this.toolOutputStringLimit;
+  }
+
+  private resolveToolOutputSerializedLimit(job: SandboxJob): number {
+    return this.isEconomy(job) ? this.economyToolOutputSerializedLimit : this.toolOutputSerializedLimit;
+  }
+
+  private resolveHttpToolMaxResponseChars(job: SandboxJob): number {
+    return this.isEconomy(job) ? this.economyHttpToolMaxResponseChars : this.httpToolMaxResponseChars;
+  }
+
+  private truncateStringFields(value: unknown, maxLength: number, tracker: { truncated: boolean }): unknown {
+    if (typeof value === 'string') {
+      const truncated = this.truncateStringValue(value, maxLength);
+      tracker.truncated = tracker.truncated || truncated.truncated;
+      return truncated.value;
+    }
+
+    if (Array.isArray(value)) {
+      return value.map((item) => this.truncateStringFields(item, maxLength, tracker));
+    }
+
+    if (value && typeof value === 'object') {
+      const result: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(value)) {
+        result[key] = this.truncateStringFields(val, maxLength, tracker);
+      }
+      return result;
+    }
+
+    return value;
+  }
+
+  private truncateStringValue(value: string, maxLength: number): { value: string; truncated: boolean; omitted: number } {
+    if (!Number.isFinite(maxLength) || maxLength <= 0 || value.length <= maxLength) {
+      return { value, truncated: false, omitted: 0 };
+    }
+
+    const suffixBase = '... [truncated ';
+    const suffixClose = ' chars]';
+    const suffixLength = suffixBase.length + suffixClose.length + String(value.length).length;
+    const available = Math.max(0, maxLength - suffixLength);
+    const omitted = Math.max(0, value.length - available);
+    const suffix = `${suffixBase}${omitted}${suffixClose}`;
+    const truncatedValue = `${value.slice(0, available)}${suffix}`;
+
+    return { value: truncatedValue, truncated: true, omitted };
+  }
+
+  private parsePositiveInteger(raw: string | undefined, defaultValue: number): number {
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue;
+  }
+}

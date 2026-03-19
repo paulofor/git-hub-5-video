@@ -1,0 +1,101 @@
+# Build artifacts
+apps/backend/target/
+apps/frontend/node_modules/
+apps/sandbox-orchestrator/node_modules/
+apps/sandbox-orchestrator/dist/
+apps/frontend/dist/
+apps/frontend/tsconfig.tsbuildinfo
+**/.DS_Store
+.env.local
+npm-debug.log*
+exemplo-cliente/codex/.github
+
+# deps
+# Node.js dependencies
+exemplo-cliente/codex/node_modules
+exemplo-cliente/codex/.pnpm-store
+exemplo-cliente/codex/.pnpm-debug.log
+
+# Keep pnpm-lock.yaml
+exemplo-cliente/codex/!pnpm-lock.yaml
+
+# build
+exemplo-cliente/codex/dist/
+exemplo-cliente/codex/build/
+exemplo-cliente/codex/out/
+exemplo-cliente/codex/storybook-static/
+
+# ignore README for publishing
+exemplo-cliente/codex/codex-cli/README.md
+
+# ignore Nix derivation results
+exemplo-cliente/codex/result
+
+# editor
+exemplo-cliente/codex/.vscode/
+exemplo-cliente/codex/.idea/
+exemplo-cliente/codex/.history/
+exemplo-cliente/codex/.zed/
+exemplo-cliente/codex/*.swp
+exemplo-cliente/codex/*~
+
+# cli tools
+exemplo-cliente/codex/CLAUDE.md
+exemplo-cliente/codex/.claude/
+exemplo-cliente/codex/AGENTS.override.md
+
+# caches
+exemplo-cliente/codex/.cache/
+exemplo-cliente/codex/.turbo/
+exemplo-cliente/codex/.parcel-cache/
+exemplo-cliente/codex/.eslintcache
+exemplo-cliente/codex/.nyc_output/
+exemplo-cliente/codex/.jest/
+exemplo-cliente/codex/*.tsbuildinfo
+
+# logs
+exemplo-cliente/codex/*.log
+exemplo-cliente/codex/npm-debug.log*
+exemplo-cliente/codex/yarn-debug.log*
+exemplo-cliente/codex/yarn-error.log*
+
+# env
+exemplo-cliente/codex/.env*
+exemplo-cliente/codex/!.env.example
+
+# package
+exemplo-cliente/codex/*.tgz
+
+# ci
+exemplo-cliente/codex/.vercel/
+exemplo-cliente/codex/.netlify/
+
+# patches
+exemplo-cliente/codex/apply_patch/
+
+# coverage
+exemplo-cliente/codex/coverage/
+
+# personal files
+exemplo-cliente/codex/personal/
+
+# os
+exemplo-cliente/codex/.DS_Store
+exemplo-cliente/codex/Thumbs.db
+exemplo-cliente/codex/Icon?
+exemplo-cliente/codex/.Spotlight-V100/
+
+# Unwanted package managers
+exemplo-cliente/codex/.yarn/
+exemplo-cliente/codex/yarn.lock
+
+# release
+exemplo-cliente/codex/package.json-e
+exemplo-cliente/codex/session.ts-e
+exemplo-cliente/codex/CHANGELOG.ignore.md
+
+# nix related
+exemplo-cliente/codex/.direnv
+exemplo-cliente/codex/.envrc
+
+.env

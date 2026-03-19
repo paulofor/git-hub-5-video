@@ -1,0 +1,209 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build backend
+        run: mvn -f apps/backend -B test
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: apps/frontend/package-lock.json
+      - name: Install deps
+        run: npm --prefix apps/frontend ci
+      - name: Lint
+        run: npm --prefix apps/frontend run lint
+
+  sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: apps/sandbox-orchestrator/package-lock.json
+      - name: Install deps
+        run: npm --prefix apps/sandbox-orchestrator ci
+      - name: Test
+        run: npm --prefix apps/sandbox-orchestrator test
+
+  docker:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: apps/backend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/ai-hub-3-backend:latest
+            ghcr.io/${{ github.repository_owner }}/ai-hub-3-backend:${{ github.sha }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-hub-3-backend:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-hub-3-backend:buildcache,mode=max
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: apps/frontend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/ai-hub-3-frontend:latest
+            ghcr.io/${{ github.repository_owner }}/ai-hub-3-frontend:${{ github.sha }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-hub-3-frontend:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-hub-3-frontend:buildcache,mode=max
+      - name: Build and push sandbox orchestrator image
+        uses: docker/build-push-action@v5
+        with:
+          context: apps/sandbox-orchestrator
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/ai-hub-3-sandbox:latest
+            ghcr.io/${{ github.repository_owner }}/ai-hub-3-sandbox:${{ github.sha }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-hub-3-sandbox:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/ai-hub-3-sandbox:buildcache,mode=max
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - backend
+      - frontend
+      - sandbox
+      - docker
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DEPLOY_HOST: 163.245.202.80
+      DEPLOY_USER: root
+      REMOTE_PATH: /root/ai-hub
+      GHCR_USERNAME: ${{ secrets.GHCR_USERNAME != '' && secrets.GHCR_USERNAME || github.actor }}
+      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN != '' && secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${VPS_SSH_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "SSH_COMMON_ARGS=-i $HOME/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes -o ConnectTimeout=60" >> "$GITHUB_ENV"
+      - name: Prepare remote directory
+        run: |
+          ssh ${SSH_COMMON_ARGS} "${DEPLOY_USER}@${DEPLOY_HOST}" "mkdir -p ${REMOTE_PATH}"
+      - name: Sync repository to VPS
+        run: |
+          rsync -az --delete \
+            -e "ssh ${SSH_COMMON_ARGS}" \
+            --exclude '.git/' \
+            --exclude 'node_modules/' \
+            ./ "${DEPLOY_USER}@${DEPLOY_HOST}:${REMOTE_PATH}"
+      - name: Authenticate registry on VPS
+        run: |
+          if [ -z "${GHCR_TOKEN}" ]; then
+            echo "GHCR_TOKEN is empty. Configure GHCR_TOKEN or provide GHCR_USERNAME/GHCR_TOKEN secrets with access to ghcr.io" >&2
+            exit 1
+          fi
+          ssh ${SSH_COMMON_ARGS} "${DEPLOY_USER}@${DEPLOY_HOST}" "docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin" <<< "${GHCR_TOKEN}"
+      - name: Ensure public network exists on VPS
+        run: |
+          ssh ${SSH_COMMON_ARGS} "${DEPLOY_USER}@${DEPLOY_HOST}" "docker network inspect public-net >/dev/null 2>&1 || docker network create public-net"
+      - name: Publish services
+        run: |
+          REMOTE_IMAGES_ENV="BACKEND_IMAGE=ghcr.io/${GHCR_USERNAME}/ai-hub-3-backend:latest FRONTEND_IMAGE=ghcr.io/${GHCR_USERNAME}/ai-hub-3-frontend:latest SANDBOX_ORCHESTRATOR_IMAGE=ghcr.io/${GHCR_USERNAME}/ai-hub-3-sandbox:latest"
+          ssh ${SSH_COMMON_ARGS} "${DEPLOY_USER}@${DEPLOY_HOST}" "set -euo pipefail && cd ${REMOTE_PATH} && export ${REMOTE_IMAGES_ENV} && docker compose pull && docker compose up -d"
+      - name: Clean up GHCR images for this build
+        env:
+          GHCR_OWNER: ${{ github.repository_owner }}
+          GHCR_SHA: ${{ github.sha }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN != '' && secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GHCR_TOKEN}" ]; then
+            echo "GHCR_TOKEN is empty. Configure GHCR_TOKEN or provide GHCR_USERNAME/GHCR_TOKEN secrets with access to ghcr.io" >&2
+            exit 1
+          fi
+
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "jq is required for cleaning up GHCR images" >&2
+            exit 1
+          fi
+
+          api_request() {
+            local method="$1"
+            local path="$2"
+            local data="${3:-}"
+            if [ -n "$data" ]; then
+              curl -fsSL -X "$method" \
+                -H "Authorization: Bearer ${GHCR_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                -d "$data" \
+                "https://api.github.com/${path}"
+            else
+              curl -fsSL -X "$method" \
+                -H "Authorization: Bearer ${GHCR_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/${path}"
+            fi
+          }
+
+          owner_type=$(api_request GET "users/${GHCR_OWNER}" | jq -r '.type')
+          if [ "${owner_type}" = "Organization" ]; then
+            owner_path="orgs/${GHCR_OWNER}"
+          else
+            owner_path="users/${GHCR_OWNER}"
+          fi
+
+          delete_tag() {
+            local package_name="$1"
+            local tag="$2"
+            local versions
+            versions=$(api_request GET "${owner_path}/packages/container/${package_name}/versions?per_page=100") || return 0
+            version_ids=$(echo "${versions}" | jq -r --arg TAG "$tag" '.[] | select(.metadata.container.tags[]? == $TAG) | .id')
+            if [ -z "${version_ids}" ]; then
+              echo "No versions found for ${package_name}:${tag}, skipping"
+              return 0
+            fi
+            for version_id in ${version_ids}; do
+              echo "Deleting ${package_name} version ${version_id} (tag ${tag})"
+              api_request DELETE "${owner_path}/packages/container/${package_name}/versions/${version_id}"
+            done
+          }
+
+          delete_tag "ai-hub-3-backend" "${GHCR_SHA}"
+          delete_tag "ai-hub-3-frontend" "${GHCR_SHA}"
+          delete_tag "ai-hub-3-sandbox" "${GHCR_SHA}"

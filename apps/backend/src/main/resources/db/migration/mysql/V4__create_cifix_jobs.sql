@@ -1,0 +1,19 @@
+CREATE TABLE cifix_jobs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    job_id VARCHAR(100) NOT NULL UNIQUE,
+    project_id BIGINT NOT NULL,
+    branch VARCHAR(200) NOT NULL,
+    commit_hash VARCHAR(100),
+    task_description LONGTEXT NOT NULL,
+    test_command TEXT,
+    status VARCHAR(60) NOT NULL,
+    summary LONGTEXT,
+    changed_files LONGTEXT,
+    patch LONGTEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_cifix_jobs_project FOREIGN KEY (project_id) REFERENCES projects(id)
+);
+
+CREATE INDEX idx_cifix_jobs_project ON cifix_jobs(project_id);
+CREATE INDEX idx_cifix_jobs_created_at ON cifix_jobs(created_at);
