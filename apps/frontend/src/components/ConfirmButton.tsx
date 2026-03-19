@@ -42,7 +42,7 @@ export default function ConfirmButton({
         'rounded-md border px-4 py-2 text-sm font-semibold transition',
         awaiting
           ? 'border-orange-500 text-orange-500'
-          : 'border-emerald-600 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/40',
+          : 'border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/40',
         (disabled || loading) && 'opacity-50 cursor-not-allowed'
       )}
     >

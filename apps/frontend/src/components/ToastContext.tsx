@@ -38,7 +38,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             className={`rounded-md px-4 py-2 shadow-lg text-sm ${
               toast.type === 'error'
                 ? 'bg-red-600 text-white'
-                : 'bg-emerald-600 text-white'
+                : 'bg-blue-600 text-white'
             }`}
           >
             {toast.message}

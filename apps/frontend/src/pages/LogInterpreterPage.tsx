@@ -164,7 +164,7 @@ export default function LogInterpreterPage() {
     if (source === 'MANUAL') {
       return <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Manual</span>;
     }
-    return <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">Automático</span>;
+    return <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">Automático</span>;
   };
 
   return (
@@ -196,8 +196,8 @@ export default function LogInterpreterPage() {
                 onClick={() => setSelectedEnvironment(environment)}
                 className={`w-full rounded-lg border px-3 py-2 text-left text-sm font-medium transition ${
                   selectedEnvironment?.id === environment.id
-                    ? 'border-emerald-500 bg-emerald-50 text-emerald-900 dark:border-emerald-400 dark:bg-emerald-900/20 dark:text-emerald-100'
-                    : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
+                    ? 'border-blue-500 bg-blue-50 text-blue-900 dark:border-blue-400 dark:bg-blue-900/20 dark:text-blue-100'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
                 }`}
               >
                 <span className="block text-base">{environment.name}</span>
@@ -229,13 +229,13 @@ export default function LogInterpreterPage() {
                     type="button"
                     onClick={handleDiscovery}
                     disabled={discoveryLoading}
-                    className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     {discoveryLoading ? 'Sincronizando...' : 'Descobrir containers'}
                   </button>
                 </div>
                 {discoveryResult && (
-                  <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-100">
+                  <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-100">
                     <p className="font-semibold">Sincronização concluída ({new Date(discoveryResult.executedAt).toLocaleString()})</p>
                     <p className="text-xs">
                       Provider: {discoveryResult.provider} | Encontrados: {discoveryResult.discovered} | Salvos:{' '}
@@ -356,7 +356,7 @@ export default function LogInterpreterPage() {
                       {creating ? 'Salvando...' : 'Adicionar container'}
                     </button>
                     {manualError && <span className="text-sm text-red-600">{manualError}</span>}
-                    {manualSuccess && <span className="text-sm text-emerald-700">{manualSuccess}</span>}
+                    {manualSuccess && <span className="text-sm text-blue-700">{manualSuccess}</span>}
                   </div>
                 </form>
               </div>

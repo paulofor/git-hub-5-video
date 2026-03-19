@@ -324,7 +324,7 @@ export default function CodexRequestDetailPage() {
             <p className="text-sm text-slate-500">Solicitação não encontrada.</p>
             {error && <p className="text-sm text-red-500">{error}</p>}
           </div>
-          <Link to="/codex" className="text-emerald-600 hover:underline">
+          <Link to="/codex" className="text-blue-600 hover:underline">
             Voltar para histórico
           </Link>
         </div>
@@ -362,7 +362,7 @@ export default function CodexRequestDetailPage() {
           </button>
           <Link
             to="/codex"
-            className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+            className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
           >
             Voltar
           </Link>
@@ -373,7 +373,7 @@ export default function CodexRequestDetailPage() {
         <div className="space-y-2">
           {error && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-900/20 dark:text-red-200">{error}</div>}
           {successMessage && (
-            <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-900/20 dark:text-emerald-200">
+            <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-200">
               {successMessage}
             </div>
           )}
@@ -521,14 +521,14 @@ export default function CodexRequestDetailPage() {
                     <button
                       type="button"
                       onClick={() => handleCopyPrompt(request.prompt)}
-                      className="text-xs font-semibold text-emerald-600 hover:text-emerald-700"
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-700"
                     >
                       Copiar prompt
                     </button>
                     <span className="text-xs text-slate-500">{request.prompt.length.toLocaleString('pt-BR')} caracteres</span>
                   </div>
                 </div>
-                <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-md bg-slate-900/90 p-4 text-xs leading-relaxed text-emerald-100">
+                <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-md bg-slate-900/90 p-4 text-xs leading-relaxed text-blue-100">
                   {request.prompt}
                 </pre>
               </div>
@@ -539,7 +539,7 @@ export default function CodexRequestDetailPage() {
                     {request.responseText ? `${request.responseText.length.toLocaleString('pt-BR')} caracteres` : 'Sem resposta'}
                   </span>
                 </div>
-                <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-md bg-slate-900/90 p-4 text-xs leading-relaxed text-emerald-100">
+                <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-md bg-slate-900/90 p-4 text-xs leading-relaxed text-blue-100">
                   {request.responseText ?? '—'}
                 </pre>
               </div>
@@ -554,7 +554,7 @@ export default function CodexRequestDetailPage() {
                       href={request.pullRequestUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-2 text-emerald-700 underline hover:text-emerald-800"
+                      className="inline-flex items-center gap-2 text-blue-700 underline hover:text-blue-800"
                     >
                       Abrir merge/pull request
                       <span aria-hidden>↗</span>
@@ -574,7 +574,7 @@ export default function CodexRequestDetailPage() {
                     type="button"
                     onClick={handleCreatePullRequest}
                     disabled={creatingPr}
-                    className="rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+                    className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     {creatingPr ? 'Criando PR...' : 'Criar novo PR no GitHub'}
                   </button>
@@ -617,7 +617,7 @@ export default function CodexRequestDetailPage() {
                   setFeedbackDirty(true);
                 }}
                 rows={3}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 placeholder="Descreva o problema, o contexto e o impacto observado."
               />
               <p className="text-xs text-slate-500 dark:text-slate-400">Ajuda a entender o motivo da solicitação.</p>
@@ -634,7 +634,7 @@ export default function CodexRequestDetailPage() {
                   setFeedbackDirty(true);
                 }}
                 rows={2}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 placeholder="Baixa, média, alta ou detalhe do que tornou a resolução fácil ou difícil."
               />
               <p className="text-xs text-slate-500 dark:text-slate-400">Documente desafios, bloqueios ou facilidades encontrados.</p>
@@ -651,7 +651,7 @@ export default function CodexRequestDetailPage() {
                   setFeedbackDirty(true);
                 }}
                 rows={5}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 placeholder="Anote decisões, problemas encontrados ou ideias para melhorar o fluxo."
               />
               <p className="text-xs text-slate-500 dark:text-slate-400">Guarde aprendizados para evoluir o processo.</p>
@@ -668,7 +668,7 @@ export default function CodexRequestDetailPage() {
                   setFeedbackDirty(true);
                 }}
                 rows={3}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm leading-relaxed text-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 placeholder="Registre um log ou observação após a solicitação ser executada."
               />
               <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -680,7 +680,7 @@ export default function CodexRequestDetailPage() {
                 type="button"
                 onClick={handleSaveComment}
                 disabled={savingComment}
-                className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {savingComment ? 'Salvando...' : 'Salvar comentário'}
               </button>

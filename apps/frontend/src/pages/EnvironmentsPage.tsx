@@ -284,12 +284,12 @@ export default function EnvironmentsPage() {
             <button
               type="submit"
               disabled={creating}
-              className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {creating ? 'Salvando...' : 'Cadastrar ambiente'}
             </button>
             {creationError && <span className="text-sm text-red-500">{creationError}</span>}
-            {creationSuccess && <span className="text-sm text-emerald-600">{creationSuccess}</span>}
+            {creationSuccess && <span className="text-sm text-blue-600">{creationSuccess}</span>}
           </div>
         </form>
       </div>
@@ -467,7 +467,7 @@ export default function EnvironmentsPage() {
                 Cancelar
               </button>
               {connectionError && <span className="text-sm text-red-600">{connectionError}</span>}
-              {connectionSuccess && <span className="text-sm text-emerald-700">{connectionSuccess}</span>}
+              {connectionSuccess && <span className="text-sm text-blue-700">{connectionSuccess}</span>}
             </div>
           </form>
         </div>

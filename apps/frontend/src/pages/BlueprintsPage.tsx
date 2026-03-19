@@ -107,12 +107,12 @@ export default function BlueprintsPage() {
                 <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{blueprint.description}</p>
                 {Object.keys(blueprint.templates || {}).length > 0 && (
                   <details className="mt-2 text-xs">
-                    <summary className="cursor-pointer text-emerald-600">Ver arquivos</summary>
+                    <summary className="cursor-pointer text-blue-600">Ver arquivos</summary>
                     <div className="mt-2 space-y-2">
                       {Object.entries(blueprint.templates).map(([path, content]) => (
                         <div key={path}>
                           <p className="font-medium">{path}</p>
-                          <pre className="mt-1 max-h-40 overflow-auto rounded bg-slate-900/90 p-2 text-[11px] text-emerald-100">
+                          <pre className="mt-1 max-h-40 overflow-auto rounded bg-slate-900/90 p-2 text-[11px] text-blue-100">
                             {content}
                           </pre>
                         </div>

@@ -41,7 +41,7 @@ export default function ShellLayout({ children }: { children: ReactNode }) {
                   clsx(
                     'block rounded-md px-3 py-2 text-sm font-medium',
                     isActive
-                      ? 'bg-emerald-600 text-white'
+                      ? 'bg-blue-600 text-white'
                       : 'text-slate-700 hover:bg-slate-200 dark:text-slate-200 dark:hover:bg-slate-800'
                   )
                 }
