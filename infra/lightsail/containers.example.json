@@ -6,8 +6,8 @@
       "command": ["java", "-jar", "app.jar"],
       "ports": { "8081": "HTTP" },
       "environment": {
-        "DB_URL": "jdbc:postgresql://db.internal:5432/aihub",
-        "DB_USER": "aihub",
+        "DB_URL": "jdbc:postgresql://db.internal:5432/aihubvideodb",
+        "DB_USER": "aihubvideodb_user",
         "DB_PASS": "<secret>",
         "OPENAI_API_KEY": "<secret>",
         "GITHUB_APP_ID": "<id>",
