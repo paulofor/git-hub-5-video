@@ -24,7 +24,7 @@ export default function ShellLayout({ children }: { children: ReactNode }) {
       <div className="flex min-h-screen bg-slate-100 dark:bg-slate-900">
         <aside className="w-60 bg-white/80 dark:bg-slate-950/40 backdrop-blur border-r border-slate-200 dark:border-slate-800 p-4">
           <div className="flex items-center justify-between mb-6">
-            <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100">AI Hub 3</h1>
+            <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100">AI Hub 5</h1>
             <button
               onClick={() => setDark((prev) => !prev)}
               className="text-xs px-2 py-1 border rounded-md border-slate-300 dark:border-slate-700"
