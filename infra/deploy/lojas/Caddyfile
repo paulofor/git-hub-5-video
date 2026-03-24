@@ -1,0 +1,13 @@
+{
+  email {$CADDY_EMAIL}
+}
+
+lojapf.shop, www.lojapf.shop {
+  encode zstd gzip
+  reverse_proxy loja-virtual:3000
+}
+
+gerlojapf.shop, www.gerlojapf.shop {
+  encode zstd gzip
+  reverse_proxy gerenciador-loja-virtual:3000
+}
