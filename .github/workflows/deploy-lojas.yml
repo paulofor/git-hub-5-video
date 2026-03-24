@@ -94,8 +94,8 @@ jobs:
 
       - name: Login no GHCR na VPS
         run: |
-          ssh ${SSH_COMMON_ARGS} "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "docker login ghcr.io -u '${GHCR_USER}' --password-stdin" <<< "${GHCR_TOKEN}"
+          printf '%s' "${GHCR_TOKEN}" | ssh ${SSH_COMMON_ARGS} "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "docker login ghcr.io -u \"${GHCR_USER}\" --password-stdin"
 
       - name: Publicar stack
         env:
