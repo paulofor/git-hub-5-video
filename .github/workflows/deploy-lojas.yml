@@ -6,8 +6,8 @@ on:
     branches:
       - main
     paths:
-      - "apps/loja-virtual/**"
-      - "apps/gerenciador-loja-virtual/**"
+      - "apps/frontend/**"
+      - "apps/backend/**"
       - "infra/deploy/lojas/**"
       - ".github/workflows/deploy-lojas.yml"
 
@@ -19,12 +19,12 @@ jobs:
         include:
           - app_name: loja-virtual
             image_name: loja-virtual
-            dockerfile: apps/loja-virtual/Dockerfile
-            context: apps/loja-virtual
+            dockerfile: apps/frontend/Dockerfile
+            context: apps/frontend
           - app_name: gerenciador-loja-virtual
             image_name: gerenciador-loja-virtual
-            dockerfile: apps/gerenciador-loja-virtual/Dockerfile
-            context: apps/gerenciador-loja-virtual
+            dockerfile: apps/backend/Dockerfile
+            context: apps/backend
 
     steps:
       - name: Checkout

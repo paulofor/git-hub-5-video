@@ -28,5 +28,5 @@ O workflow `.github/workflows/deploy-lojas.yml`:
 
 ## Ajustes necessários
 
-- Troque os caminhos `apps/loja-virtual` e `apps/gerenciador-loja-virtual` no workflow caso seus Dockerfiles estejam em outra pasta.
+- Neste repositório, o workflow usa `apps/frontend` (imagem `loja-virtual`) e `apps/backend` (imagem `gerenciador-loja-virtual`).
 - Se as aplicações não escutarem na porta `3000`, ajuste `reverse_proxy` no `Caddyfile` e o `expose` no `docker-compose.public.yml`.
