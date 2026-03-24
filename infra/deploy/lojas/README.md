@@ -30,3 +30,17 @@ O workflow `.github/workflows/deploy-lojas.yml`:
 
 - Neste repositório, o workflow usa `apps/frontend` (imagem `loja-virtual`) e `apps/backend` (imagem `gerenciador-loja-virtual`).
 - Se as aplicações não escutarem na porta `3000`, ajuste `reverse_proxy` no `Caddyfile` e o `expose` no `docker-compose.public.yml`.
+
+
+## Troubleshooting rápido
+
+### Erro: `host not found in upstream "backend"` no `loja-virtual`
+
+Se o container `loja-virtual` reiniciar com esse erro, o Nginx interno da imagem está tentando resolver o host `backend`.
+No `docker-compose.public.yml`, o serviço `gerenciador-loja-virtual` já recebe o alias de rede `backend` para resolver isso.
+
+Depois de atualizar os arquivos na VPS, aplique:
+
+```bash
+docker compose -f docker-compose.public.yml up -d --force-recreate
+```
