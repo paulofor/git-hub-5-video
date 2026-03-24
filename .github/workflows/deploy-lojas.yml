@@ -11,9 +11,16 @@ on:
       - "infra/deploy/lojas/**"
       - ".github/workflows/deploy-lojas.yml"
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
+    env:
+      GHCR_USER: ${{ secrets.GHCR_USERNAME != '' && secrets.GHCR_USERNAME || github.repository_owner }}
+      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN != '' && secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
     strategy:
       matrix:
         include:
@@ -37,8 +44,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GHCR_TOKEN != '' && secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+          username: ${{ env.GHCR_USER }}
+          password: ${{ env.GHCR_TOKEN }}
 
       - name: Build e push da imagem
         uses: docker/build-push-action@v6
@@ -47,10 +54,10 @@ jobs:
           file: ${{ matrix.dockerfile }}
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.image_name }}:latest
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.image_name }}:${{ github.sha }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/${{ matrix.image_name }}:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/${{ matrix.image_name }}:buildcache,mode=max
+            ghcr.io/${{ env.GHCR_USER }}/${{ matrix.image_name }}:latest
+            ghcr.io/${{ env.GHCR_USER }}/${{ matrix.image_name }}:${{ github.sha }}
+          cache-from: type=registry,ref=ghcr.io/${{ env.GHCR_USER }}/${{ matrix.image_name }}:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ env.GHCR_USER }}/${{ matrix.image_name }}:buildcache,mode=max
 
   deploy:
     runs-on: ubuntu-latest
@@ -59,6 +66,8 @@ jobs:
       DEPLOY_HOST: 177.153.62.107
       DEPLOY_USER: root
       REMOTE_PATH: /opt/lojas
+      GHCR_USER: ${{ secrets.GHCR_USERNAME != '' && secrets.GHCR_USERNAME || github.repository_owner }}
+      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN != '' && secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout
@@ -84,16 +93,13 @@ jobs:
             "${DEPLOY_USER}@${DEPLOY_HOST}:${REMOTE_PATH}/"
 
       - name: Login no GHCR na VPS
-        env:
-          GHCR_USER: ${{ github.repository_owner }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN != '' && secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           ssh ${SSH_COMMON_ARGS} "${DEPLOY_USER}@${DEPLOY_HOST}" \
             "docker login ghcr.io -u '${GHCR_USER}' --password-stdin" <<< "${GHCR_TOKEN}"
 
       - name: Publicar stack
         env:
-          GHCR_USER: ${{ github.repository_owner }}
+          GHCR_USER: ${{ secrets.GHCR_USERNAME != '' && secrets.GHCR_USERNAME || github.repository_owner }}
           CADDY_EMAIL: ${{ secrets.CADDY_EMAIL }}
         run: |
           ssh ${SSH_COMMON_ARGS} "${DEPLOY_USER}@${DEPLOY_HOST}" "\
